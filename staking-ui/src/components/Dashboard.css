@@ -1,0 +1,13 @@
+.dashboard-container {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-around;
+  margin-top: 1rem;
+  width: 90vw;
+  background-color: #fffafa;
+  border: solid;
+  border-radius: 1rem;
+  border-color: #fffafa;
+  padding: 2.5rem;
+}
