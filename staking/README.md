@@ -15,5 +15,5 @@ npx hardhat run scripts/sample-script.js --network rinkeby
 
 npx hardhat verify --contract contracts/XCoin.sol:XCoin --network rinkeby <address> "XCoin" "XCN" 1000
 
-npx hardhat verify --contract contracts/Staking.sol:Staking --network rinkeby <address> "XCoin" "XCN" 1000 10000000000000
+npx hardhat verify --contract contracts/Staking.sol:Staking --network rinkeby <address> "XCoin" "XCN" 1000 100000000000 10000000000000
 ```

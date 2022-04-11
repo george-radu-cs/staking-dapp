@@ -25,7 +25,7 @@ async function main() {
   // console.log("XCoin deployed to:", xCoin.address);
 
   const Staking = await hre.ethers.getContractFactory("Staking");
-  const staking = await Staking.deploy("XCoin", "XCN", 1000, BigNumber.from("10000000000000"));
+  const staking = await Staking.deploy("XCoin", "XCN", 1000, 100000000000, BigNumber.from("10000000000000"));
 
   await staking.deployed();
 
