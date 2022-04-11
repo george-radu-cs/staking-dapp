@@ -14,6 +14,7 @@ contract Staking is XCoin {
     uint256 public totalStakedAmount;
     uint256 public totalLoanedAmount;
     uint256 public rewardRate;
+    uint256 public totalRewardAmount;
 
     event UpdatedTotalStakedAmount(uint256 totalStakedAmount);
     event UpdatedUserInfo(
@@ -26,9 +27,17 @@ contract Staking is XCoin {
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply,
+        uint256 _cap,
         uint256 _rewardRate
-    ) XCoin(_name, _symbol, _initialSupply) {
+    ) XCoin(_name, _symbol, _initialSupply, _cap) {
         rewardRate = _rewardRate;
+    }
+
+    function addReward(uint256 _amount) public onlyOwner {
+        require(_amount > 0, "Amount to be added must be a pozitive number!");
+
+        totalRewardAmount += _amount;
+        _burn(msg.sender, _amount);
     }
 
     function stake(uint256 _amount) public {
@@ -85,7 +94,8 @@ contract Staking is XCoin {
 
         // if the user removes all the stake, send him the reward as well
         uint256 amountToUnstake = _amount;
-        if (users[msg.sender].stakedAmount == 0) {
+        if (users[msg.sender].stakedAmount == 0 && users[msg.sender].rewardAmount <= totalRewardAmount) {
+            totalRewardAmount -= users[msg.sender].rewardAmount;
             amountToUnstake += users[msg.sender].rewardAmount;
             users[msg.sender].rewardAmount = 0;
         }
@@ -114,6 +124,9 @@ contract Staking is XCoin {
 
         users[msg.sender].lastRewardUpdate = block.timestamp;
 
+        require(reward <= totalRewardAmount, "The reward is not available!");
+
+        totalRewardAmount -= reward;
         // send the reward to the user
         _mint(msg.sender, reward);
         // reset the reward count
@@ -146,6 +159,10 @@ contract Staking is XCoin {
 
         // make sure the reward value is up to date
         users[msg.sender].rewardAmount += computeReward(msg.sender);
+
+        require(users[msg.sender].rewardAmount <= totalRewardAmount, "The reward is not available!");
+
+        totalRewardAmount -= users[msg.sender].rewardAmount;
 
         // increase the stake from the reward, reset the reward and the date
         totalStakedAmount += users[msg.sender].rewardAmount;

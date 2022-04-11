@@ -9,13 +9,20 @@ describe("Staking", () => {
   let name = "Xcoin";
   let symbol = "XCN";
   let initialSupply = 1000000;
+  let cap = 100000000000000;
   let rewardRate = 1;
   let staking;
 
   beforeEach(async () => {
     const [owner, addr1, addr2] = await ethers.getSigners();
     const Staking = await ethers.getContractFactory("Staking");
-    staking = await Staking.deploy(name, symbol, initialSupply, rewardRate);
+    staking = await Staking.deploy(
+      name,
+      symbol,
+      initialSupply,
+      cap,
+      rewardRate
+    );
     await staking.deployed();
     stakingOwner = owner;
     user1 = addr1;
@@ -133,10 +140,16 @@ describe("Staking", () => {
     expect(initialBalance).to.eq(finalBalance.add(BigNumber.from("5000")));
   });
 
-  it("When someone unstake their entire stake amount, the reward amount should be sent!", async () => {
-    let initialBalance = await staking.balanceOf(stakingOwner.address);
+  it("When someone unstake their entire stake amount, the reward amount should not be sent because we the pool doesn't have reward to give!", async () => {
+    const transferTX = await staking.transfer(
+      user1.address,
+      BigNumber.from("100000")
+    );
+    await transferTX.wait();
 
-    const stakeTx = await staking.stake(BigNumber.from("10000"));
+    let initialBalance = await staking.balanceOf(user1.address);
+
+    const stakeTx = await staking.connect(user1).stake(BigNumber.from("10000"));
     await stakeTx.wait();
 
     // add 10 seconds to have time to gather reward
@@ -144,38 +157,89 @@ describe("Staking", () => {
     // force mine the next block
     await ethers.provider.send("evm_mine", []);
 
-    const unstakeTx = await staking.unstake(BigNumber.from("10000"));
+    const unstakeTx = await staking
+      .connect(user1)
+      .unstake(BigNumber.from("10000"));
     await unstakeTx.wait();
 
-    let ownerData = await staking.users(stakingOwner.address);
-    let finalBalance = await staking.balanceOf(stakingOwner.address);
+    let userData = await staking.users(user1.address);
+    let finalBalance = await staking.balanceOf(user1.address);
 
     expect(await staking.totalStakedAmount()).to.eq(BigNumber.from("0"));
-    expect(ownerData.stakedAmount).to.eq(BigNumber.from("0"));
-    expect(ownerData.rewardAmount).to.eq(BigNumber.from("0"));
+    expect(userData.stakedAmount).to.eq(BigNumber.from("0"));
+    expect(userData.rewardAmount).to.not.eq(BigNumber.from("0"));
+    expect(finalBalance).to.be.gte(initialBalance);
+  });
+
+  it("When someone unstake their entire stake amount, the reward amount should be sent, the pool has reward to give!", async () => {
+    const transferTX = await staking.transfer(
+      user1.address,
+      BigNumber.from("100000")
+    );
+    await transferTX.wait();
+
+    let initialBalance = await staking.balanceOf(user1.address);
+
+    const stakeTx = await staking.connect(user1).stake(BigNumber.from("10000"));
+    await stakeTx.wait();
+
+    // add reward
+    const addRewardTx = await staking.addReward(BigNumber.from("10000"));
+    await addRewardTx.wait();
+
+    // add 10 seconds to have time to gather reward
+    await ethers.provider.send("evm_increaseTime", [10]);
+    // force mine the next block
+    await ethers.provider.send("evm_mine", []);
+
+    const unstakeTx = await staking
+      .connect(user1)
+      .unstake(BigNumber.from("10000"));
+    await unstakeTx.wait();
+
+    let userData = await staking.users(user1.address);
+    let finalBalance = await staking.balanceOf(user1.address);
+
+    expect(await staking.totalStakedAmount()).to.eq(BigNumber.from("0"));
+    expect(userData.stakedAmount).to.eq(BigNumber.from("0"));
+    expect(userData.rewardAmount).to.eq(BigNumber.from("0"));
     expect(finalBalance).to.be.gte(initialBalance);
   });
 
   it("After you unstake and withdraw reward try to stake", async () => {
-    const stakeTx = await staking.stake(BigNumber.from("10000"));
+    const transferTX = await staking.transfer(
+      user1.address,
+      BigNumber.from("100000")
+    );
+    await transferTX.wait();
+
+    // add reward
+    const addRewardTx = await staking.addReward(BigNumber.from("10000"));
+    await addRewardTx.wait();
+
+    const stakeTx = await staking.connect(user1).stake(BigNumber.from("10000"));
     await stakeTx.wait();
 
-    const unstakeTx = await staking.unstake(BigNumber.from("5000"));
+    const unstakeTx = await staking
+      .connect(user1)
+      .unstake(BigNumber.from("5000"));
     await unstakeTx.wait();
 
-    const withdrawTx = await staking.withdrawReward();
+    const withdrawTx = await staking.connect(user1).withdrawReward();
     await withdrawTx.wait();
 
     // get balance after unstake half of staked amount and withdraw reward
-    let initialBalance = await staking.balanceOf(stakingOwner.address);
+    let initialBalance = await staking.balanceOf(user1.address);
 
-    const secondStakeTx = await staking.stake(BigNumber.from("5000"));
+    const secondStakeTx = await staking
+      .connect(user1)
+      .stake(BigNumber.from("5000"));
     await secondStakeTx.wait();
 
-    let ownerData = await staking.users(stakingOwner.address);
+    let ownerData = await staking.users(user1.address);
 
     // get the balance after staking another 5000 coints
-    let finalBalance = await staking.balanceOf(stakingOwner.address);
+    let finalBalance = await staking.balanceOf(user1.address);
 
     expect(await staking.totalStakedAmount()).to.eq(BigNumber.from("10000"));
     expect(ownerData.stakedAmount).to.eq(BigNumber.from("10000"));
@@ -191,18 +255,28 @@ describe("Staking", () => {
   });
 
   it("The withdraw reward was a success", async () => {
-    let initialBalance = await staking.balanceOf(stakingOwner.address);
+    const transferTX = await staking.transfer(
+      user1.address,
+      BigNumber.from("100000")
+    );
+    await transferTX.wait();
 
-    const stakeTx = await staking.stake(BigNumber.from("10000"));
+    // add reward
+    const addRewardTx = await staking.addReward(BigNumber.from("10000"));
+    await addRewardTx.wait();
+
+    let initialBalance = await staking.balanceOf(user1.address);
+
+    const stakeTx = await staking.connect(user1).stake(BigNumber.from("10000"));
     await stakeTx.wait();
 
     // add 5 seconds to have time to gather reward
     await ethers.provider.send("evm_increaseTime", [5]);
 
-    const withdrawTx = await staking.withdrawReward();
+    const withdrawTx = await staking.connect(user1).withdrawReward();
     await withdrawTx.wait();
 
-    let finalBalance = await staking.balanceOf(stakingOwner.address);
+    let finalBalance = await staking.balanceOf(user1.address);
 
     expect(finalBalance).to.eq(initialBalance.sub(BigNumber.from("9995")));
   });
@@ -239,26 +313,66 @@ describe("Staking", () => {
   });
 
   it("Reinvest test", async () => {
-    const stakeTx = await staking.stake(BigNumber.from("10000"));
+    const transferTX = await staking.transfer(
+      user1.address,
+      BigNumber.from("100000")
+    );
+    await transferTX.wait();
+
+    // add reward
+    const addRewardTx = await staking.addReward(BigNumber.from("10000"));
+    await addRewardTx.wait();
+
+    const stakeTx = await staking.connect(user1).stake(BigNumber.from("10000"));
     await stakeTx.wait();
 
-    let initialOwnerData = await staking.users(stakingOwner.address);
+    let initialUserData = await staking.users(user1.address);
 
-    expect(initialOwnerData.rewardAmount).to.eq(BigNumber.from("0"));
-    expect(initialOwnerData.stakedAmount).to.eq(BigNumber.from("10000"));
+    expect(initialUserData.rewardAmount).to.eq(BigNumber.from("0"));
+    expect(initialUserData.stakedAmount).to.eq(BigNumber.from("10000"));
 
     // add 10 seconds to have time to gather reward
     await ethers.provider.send("evm_increaseTime", [10]);
     // force mine the next block
     await ethers.provider.send("evm_mine", []);
 
-    const reinvestTx = await staking.reinvestReward();
+    const reinvestTx = await staking.connect(user1).reinvestReward();
     await reinvestTx.wait();
 
-    let finalOwnerData = await staking.users(stakingOwner.address);
+    let finalUserData = await staking.users(user1.address);
 
     expect(await staking.totalStakedAmount()).to.be.gt(BigNumber.from("10000"));
-    expect(finalOwnerData.stakedAmount).to.be.gt(BigNumber.from("10000"));
-    expect(finalOwnerData.rewardAmount).to.eq(BigNumber.from("0"));
+    expect(finalUserData.stakedAmount).to.be.gt(BigNumber.from("10000"));
+    expect(finalUserData.rewardAmount).to.eq(BigNumber.from("0"));
+  });
+
+  it("Only the owner can add reward to the contract", async () => {
+    await expect(
+      staking.connect(user1).addReward(BigNumber.from("10000"))
+    ).to.be.revertedWith("");
+  });
+
+  it("The reward amount to be added should be positive", async () => {
+    await expect(staking.addReward(BigNumber.from("0"))).to.be.revertedWith(
+      "Amount to be added must be a pozitive number!"
+    );
+  });
+
+  it("The owner can add reward", async () => {
+    expect(await staking.totalRewardAmount()).to.eq(BigNumber.from("0"));
+
+    const addRewardTx = await staking.addReward(BigNumber.from("10000"));
+    await addRewardTx.wait();
+
+    expect(await staking.totalRewardAmount()).to.eq(BigNumber.from("10000"));
+  });
+
+  it("Can't mint more coins", async () => {
+    await expect(
+      staking.mint(
+        stakingOwner.address,
+        BigNumber.from("10000000000000000000000000000000000000")
+      )
+    ).to.be.revertedWith("");
   });
 });
